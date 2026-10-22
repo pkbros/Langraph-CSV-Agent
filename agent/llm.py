@@ -15,6 +15,23 @@ class LLMError(RuntimeError):
     """Raised when the model cannot be reached or returns unusable output."""
 
 
+def _is_rate_limit(exc: BaseException) -> bool:
+    return getattr(exc, "status_code", None) == 429 or "rate limit" in str(exc).lower()
+
+
+def _error_message(exc: BaseException) -> str:
+    """Short, user-safe error text. Never dump a raw API body into the UI."""
+    if _is_rate_limit(exc):
+        return "Groq rate limit reached. Wait a few seconds and try again."
+    if getattr(exc, "status_code", None) == 404:
+        return "The configured model is not available on Groq. Check GROQ_MODEL."
+
+    first_line = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+    if len(first_line) > 240:
+        first_line = first_line[:237] + "…"
+    return f"{type(exc).__name__}: {first_line}"
+
+
 class ChatModel(Protocol):
     """Minimal interface the graph depends on (easy to fake in tests)."""
 
@@ -94,20 +111,28 @@ class LLMClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
+        def create():
+            return self._client.chat.completions.create(**payload)
+
         try:
-            response = self._client.chat.completions.create(**payload)
-        except Exception as exc:  # noqa: BLE001 - surfaced as LLMError
-            if json_mode:
+            response = create()
+        except Exception as exc:  # noqa: BLE001 - normalised to LLMError
+            if _is_rate_limit(exc) and payload.get("max_tokens", 0) > 512:
+                # Groq rejects requests whose output budget exceeds the tier limit.
+                payload["max_tokens"] = 512
+                try:
+                    response = create()
+                except Exception as retry_exc:  # noqa: BLE001
+                    raise LLMError(_error_message(retry_exc)) from retry_exc
+            elif json_mode:
                 # Some models reject response_format; retry as plain text.
                 payload.pop("response_format", None)
                 try:
-                    response = self._client.chat.completions.create(**payload)
+                    response = create()
                 except Exception as retry_exc:  # noqa: BLE001
-                    raise LLMError(
-                        f"{type(retry_exc).__name__}: {retry_exc}"
-                    ) from retry_exc
+                    raise LLMError(_error_message(retry_exc)) from retry_exc
             else:
-                raise LLMError(f"{type(exc).__name__}: {exc}") from exc
+                raise LLMError(_error_message(exc)) from exc
 
         try:
             content = response.choices[0].message.content or ""

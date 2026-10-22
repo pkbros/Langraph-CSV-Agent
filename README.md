@@ -147,7 +147,7 @@ If a file still cannot be read, the app keeps the previous dataset loaded and sh
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | OpenAI-compatible endpoint |
 | `GROQ_MODEL` | `qwen/qwen3.8-27b` | Qwen model id |
 | `LLM_TIMEOUT_SECONDS` | `60` | Request timeout |
-| `LLM_MAX_TOKENS` | `1024` | Reply budget |
+| `LLM_MAX_TOKENS` | `800` | Reply budget (keep under Groq's tier limit) |
 | `MAX_RETRIES` | `2` | Tool-failure retries |
 
 ## Tests
@@ -195,6 +195,7 @@ sample_data/sales.csv  96-row demo dataset
 ## Design decisions
 
 - **No LLM-written code.** The model picks a tool and JSON arguments. This is safer (no arbitrary `exec`), testable (fake LLM), and recoverable (typed errors drive the retry).
+- **The model never receives the dataset.** The router sees only row/column counts plus column names and types; the planner additionally gets ranges and five sample rows. Pandas reads the full file locally.
 - **The dataframe is not in the graph state.** Checkpointing serialises state per thread, so the frame lives in a process-local registry keyed by `thread_id`, and only the text schema travels with the state. This also keeps memory cheap.
 - **Retry budget is visible.** `check` writes `retry 1/2` into the trace, and the UI shows the failed attempt, so a recovery is demonstrable rather than magic.
 - **Errors are answers, not crashes.** A failed plan after the retry budget produces a friendly message with the last error, never a stack trace.

@@ -96,6 +96,34 @@ def _history_block(state: AgentState) -> str:
     return "\n".join(lines)
 
 
+def router_schema(schema: str) -> str:
+    """A lean schema for routing: shape plus column names/types, no sample rows.
+
+    The router only needs to know whether the question is about the data and
+    which columns exist. Ranges, unique values and sample rows go to the
+    planner, which has to choose arguments.
+    """
+    if not schema:
+        return "(no data loaded)"
+
+    lines = []
+    for line in schema.splitlines():
+        if line.startswith(("Rows:", "Columns (")):
+            lines.append(line)
+        elif line.startswith("- "):
+            lines.append(line.split(":", 1)[0])
+    return "\n".join(lines) if lines else schema[:400]
+
+
+def _fallback_note(exc: LLMError) -> str:
+    if "rate limit" in str(exc).lower():
+        return (
+            "The model is rate-limited right now, so this answer came straight "
+            "from the data tools. Try again in a few seconds."
+        )
+    return "The model is unavailable right now, so this answer came straight from the data tools."
+
+
 # ---------------------------------------------------------------------------
 # nodes
 # ---------------------------------------------------------------------------
@@ -103,7 +131,7 @@ def make_router(llm: ChatModel):
     def router(state: AgentState, config: RunnableConfig | None = None) -> dict[str, Any]:
         schema = state.get("schema", "")
         user = (
-            f"DATA SCHEMA\n{schema or '(no data loaded)'}\n\n"
+            f"DATA SCHEMA\n{router_schema(schema)}\n\n"
             f"CONVERSATION SO FAR\n{_history_block(state)}\n\n"
             f"CURRENT QUESTION\n{state.get('question', '')}"
         )
@@ -299,13 +327,15 @@ def make_responder(llm: ChatModel):
                 answer = llm.text(CHAT_SYSTEM, user)
             except LLMError as exc:
                 answer = (
-                    "Hi! Upload a CSV in the sidebar and ask me about totals, filters, "
-                    "or charts. (Offline note: the model call failed.)"
+                    "Hi! Your CSV is loaded. Ask me about totals, filters or charts, "
+                    "or say 'summarise this dataset'."
                     if not state.get("history")
-                    else "I'm having trouble reaching the model right now — please try again."
+                    else "I'm having trouble reaching the model right now. Your file is "
+                    "still loaded — please try again in a moment."
                 )
-                answer += f"\n\n`{exc}`" if state.get("history") else ""
-            trace = _trace(state, "responder → chat reply")
+                trace = _trace(state, f"responder → chat fallback ({_short(str(exc), 100)})")
+            else:
+                trace = _trace(state, "responder → chat reply")
         elif error:
             answer = (
                 "I couldn't answer that one. "
@@ -321,9 +351,10 @@ def make_responder(llm: ChatModel):
             try:
                 answer = llm.text(RESPONDER_SYSTEM, user)
             except LLMError as exc:
-                answer = _fallback_answer(result)
-                answer += f"\n\n_(model unavailable: {exc})_"
-            trace = _trace(state, "responder → final answer")
+                answer = f"{_fallback_answer(result)}\n\n_{_fallback_note(exc)}_"
+                trace = _trace(state, f"responder → fallback ({_short(str(exc), 100)})")
+            else:
+                trace = _trace(state, "responder → final answer")
 
         history = [*(state.get("history") or []), {"question": question, "answer": answer}]
         history = history[-MAX_HISTORY:]

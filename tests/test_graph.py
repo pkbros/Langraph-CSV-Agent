@@ -8,8 +8,9 @@ import pytest
 from agent.config import Settings
 from agent.graph import build_graph, run_question
 from agent.llm import LLMError
-from agent.nodes import after_check, after_router
+from agent.nodes import after_check, after_router, router_schema
 from agent.state import initial_state
+from agent.tools import build_schema
 
 SETTINGS = Settings(api_key="test-key", model="qwen-test", max_retries=2)
 
@@ -179,7 +180,8 @@ def test_responder_falls_back_when_phrasing_fails(sales_df):
     assert result["error"] is None
     assert "West" in result["answer"]
     assert "top entry is West" in result["answer"]
-    assert "model unavailable" in result["answer"]
+    assert "came straight from the data tools" in result["answer"]
+    assert "Error code" not in result["answer"]
 
 
 def test_chat_responder_falls_back_when_phrasing_fails(sales_df):
@@ -187,7 +189,7 @@ def test_chat_responder_falls_back_when_phrasing_fails(sales_df):
     result = run_question("hello", "t-chatfail", df=sales_df, graph=_graph(stub))
 
     assert result["route"] == "chat"
-    assert "Upload a CSV" in result["answer"]
+    assert "CSV is loaded" in result["answer"]
 
 
 def test_llm_outage_does_not_crash(sales_df):
@@ -280,6 +282,17 @@ def test_history_is_capped(sales_df, stub_factory):
 # ---------------------------------------------------------------------------
 # pure routing helpers
 # ---------------------------------------------------------------------------
+def test_router_schema_is_compact(sales_df):
+    full = build_schema(sales_df)
+    compact = router_schema(full)
+
+    assert "Rows: 6" in compact
+    assert "region (str)" in compact
+    assert "e.g." not in compact
+    assert "First 5 rows" not in compact
+    assert len(compact) < len(full)
+
+
 def test_edge_helpers():
     assert after_router({"route": "tool"}) == "planner"
     assert after_router({"route": "chat"}) == "responder"

@@ -45,7 +45,7 @@ class Settings:
     base_url: str = "https://api.groq.com/openai/v1"
     model: str = "qwen/qwen3.8-27b"
     timeout: float = 60.0
-    max_tokens: int = 1024
+    max_tokens: int = 800
     max_retries: int = 2
 
     @classmethod
@@ -57,7 +57,7 @@ class Settings:
             or "https://api.groq.com/openai/v1",
             model=os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b").strip() or "qwen/qwen3.8-27b",
             timeout=_env_float("LLM_TIMEOUT_SECONDS", 60.0),
-            max_tokens=_env_int("LLM_MAX_TOKENS", 1024),
+            max_tokens=_env_int("LLM_MAX_TOKENS", 800),
             max_retries=max(0, _env_int("MAX_RETRIES", 2)),
         )
 

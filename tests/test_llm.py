@@ -123,6 +123,30 @@ def test_text_http_failure_is_wrapped(monkeypatch):
         client.text("system", "user")
 
 
+class RateLimited(Exception):
+    status_code = 429
+
+
+def test_rate_limit_retries_with_smaller_output_budget(monkeypatch):
+    client, calls = make_client([RateLimited("request too large"), '{"ok": 1}'], monkeypatch)
+
+    assert client.json("system", "user") == {"ok": 1}
+    assert calls.calls[0]["max_tokens"] == 800
+    assert calls.calls[1]["max_tokens"] == 512
+
+
+def test_rate_limit_twice_gives_a_short_error(monkeypatch):
+    client, _ = make_client([RateLimited("huge raw body"), RateLimited("huge raw body")], monkeypatch)
+
+    with pytest.raises(LLMError) as info:
+        client.json("system", "user")
+
+    message = str(info.value)
+    assert "rate limit" in message.lower()
+    assert len(message) < 120
+    assert "Error code" not in message
+
+
 def test_json_payload_is_valid_json_string(monkeypatch):
     client, _ = make_client(['```json\n{"route": "chat", "reason": "greeting"}\n```'], monkeypatch)
     payload = client.json("system", "user")
