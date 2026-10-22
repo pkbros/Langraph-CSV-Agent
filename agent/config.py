@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,22 @@ except ImportError:  # pragma: no cover
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+#: Environment keys that change agent behaviour; also used to key the UI cache.
+SETTING_KEYS = (
+    "GROQ_API_KEY",
+    "GROQ_BASE_URL",
+    "GROQ_MODEL",
+    "LLM_MAX_TOKENS",
+    "LLM_TIMEOUT_SECONDS",
+    "MAX_RETRIES",
+)
+
+
+def settings_fingerprint() -> str:
+    """Hash of the live settings, so caches invalidate when secrets change."""
+    raw = "|".join(os.getenv(key, "") for key in SETTING_KEYS)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def load_env() -> None:

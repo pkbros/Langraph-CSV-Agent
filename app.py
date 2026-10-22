@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from agent.charts import render_png
-from agent.config import get_settings
+from agent.config import SETTING_KEYS, get_settings, settings_fingerprint
 from agent.data import LoadReport, read_csv_bytes
 from agent.graph import build_graph, run_question
 from agent.state import STORE
@@ -87,11 +87,14 @@ def suggestions_for(df: pd.DataFrame) -> list[str]:
     return items[:4]
 
 
+_SETTING_KEYS = SETTING_KEYS
+
+
 def apply_streamlit_secrets() -> None:
     """On Streamlit Community Cloud, keys arrive via st.secrets, not the env."""
     try:
         secrets = st.secrets
-        for key in ("GROQ_API_KEY", "GROQ_BASE_URL", "GROQ_MODEL"):
+        for key in _SETTING_KEYS:
             if key in secrets and not os.getenv(key):
                 os.environ[key] = str(secrets[key])
     except Exception:  # noqa: BLE001 - no secrets.toml locally
@@ -106,9 +109,13 @@ st.set_page_config(page_title="CSV Analyst Agent", page_icon="📊", layout="wid
 # cached resources
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
-def get_graph():
+def _build_graph(fingerprint: str):
     settings = get_settings()
     return build_graph(settings=settings), settings
+
+
+def get_graph():
+    return _build_graph(settings_fingerprint())
 
 
 @st.cache_data(show_spinner=False)
@@ -215,7 +222,9 @@ with st.sidebar:
     else:
         st.warning(
             "No `GROQ_API_KEY` found.\n\nRunning the offline heuristic model — "
-            "answers still work, wording is canned.",
+            "answers still work, wording is canned.\n\n"
+            "On Streamlit Cloud: **Settings → Secrets**, add "
+            "`GROQ_API_KEY = \"gsk_...\"`, then **Reboot app**.",
             icon="⚠️",
         )
 
