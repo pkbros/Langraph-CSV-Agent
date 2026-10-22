@@ -1,0 +1,26 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "live: uses the real Groq API (needs GROQ_API_KEY)",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csv-analyst-agent"
+version = "0.1.0"
+description = "A CSV analyst agent built with LangGraph and Streamlit"
+requires-python = ">=3.10"
+dependencies = [
+    "langgraph>=0.6,<2",
+    "langchain-core>=0.3,<2",
+    "openai>=1.40",
+    "streamlit>=1.50",
+    "pandas>=2.1",
+    "matplotlib>=3.8",
+    "python-dotenv>=1.0",
+]

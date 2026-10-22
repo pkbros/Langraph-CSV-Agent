@@ -1,0 +1,8 @@
+# ---- app ----
+langgraph>=0.6,<2
+langchain-core>=0.3,<2
+openai>=1.40
+streamlit>=1.50
+pandas>=2.1
+matplotlib>=3.8
+python-dotenv>=1.0
